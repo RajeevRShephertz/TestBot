@@ -24,6 +24,18 @@ module.exports = {
 
     },
 
+    getQueryTypes: function () {
+        var queryTypes = [];
+        queryTypes.push("Current Price");
+        queryTypes.push("Results");
+        queryTypes.push("News");
+        queryTypes.push("Price Band");
+        queryTypes.push("Last 52 weeks high/low");
+        queryTypes.push("Corporate Action");
+
+        return queryTypes;
+    },
+
     apiTwo: function (a, b) {
         return a + b;
     }

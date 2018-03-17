@@ -1,11 +1,17 @@
 /*-----------------------------------------------------------------------------
-A simple echo bot for the Microsoft Bot Framework. 
+Chat bot for BSE india. Using microsoft azure bot service.
 -----------------------------------------------------------------------------*/
 
 var restify = require('restify');
 var builder = require('botbuilder');
 var botbuilder_azure = require("botbuilder-azure");
 var bse = require('./bseHelper.js');
+var mongoUtil = require('./mongoUtil.js');
+
+const chatbot = "bot";
+const chatuser = "user";
+
+mongoUtil.connectToMongo();
 
 // Setup Restify Server
 var server = restify.createServer();
@@ -29,9 +35,9 @@ server.post('/api/messages', connector.listen());
 * For samples and documentation, see: https://github.com/Microsoft/BotBuilder-Azure
 * ---------------------------------------------------------------------------------------- */
 
-var tableName = 'botdata';
-var azureTableClient = new botbuilder_azure.AzureTableClient(tableName, 'DefaultEndpointsProtocol=https;AccountName=bsechatbotaeb2;AccountKey=uEGvOdze4TVeqrMU3U0VkHvOGcz/KIfH/+7BAM1Kfzhx8kMhDmmvOxSDOivV/Sj4igUy8LWbcY0s/+zU8s+LUA==;');
-var tableStorage = new botbuilder_azure.AzureBotStorage({ gzipData: false }, azureTableClient);
+// var tableName = 'botdata';
+// var azureTableClient = new botbuilder_azure.AzureTableClient(tableName, 'DefaultEndpointsProtocol=https;AccountName=bsechatbotaeb2;AccountKey=uEGvOdze4TVeqrMU3U0VkHvOGcz/KIfH/+7BAM1Kfzhx8kMhDmmvOxSDOivV/Sj4igUy8LWbcY0s/+zU8s+LUA==;');
+// var tableStorage = new botbuilder_azure.AzureBotStorage({ gzipData: false }, azureTableClient);
 
 // Create your bot with a function to receive messages from the user
 // var bot = new builder.UniversalBot(connector);
@@ -40,123 +46,170 @@ var tableStorage = new botbuilder_azure.AzureBotStorage({ gzipData: false }, azu
 
 var inMemoryStorage = new builder.MemoryBotStorage();
 
-// This is a dinner reservation bot that uses multiple dialogs to prompt users for input.
+//bot.set(inMemoryStorage);
+
+
+// bot.on('conversationUpdate', function (activity) {
+//     if (activity.membersAdded) {
+//         activity.membersAdded.forEach((identity) => {
+//             console.log("activity",activity);
+//             console.log("identity",identity);
+//             if (identity.id === activity.address.bot.id) {
+//                 console.log("I am Here");
+//                 bot.send('Hi there!');
+//                 // var reply = new builder.activity()
+//                 //     .address(activity.address)
+//                 //     .text('Hi there!');
+
+//             }
+//         });
+//     }
+// });
+
+
+
+// This is a bot that uses multiple dialogs to prompt users for input.
 var bot = new builder.UniversalBot(connector, [
     function (session) {
+        var msg = `Hello! Welcome to BSE India. I am here to help you.`;
+        session.send(msg);
+        mongoUtil.insertMessageJson(msg, chatbot, session);
         session.beginDialog('askForHelpTopic');
     },
     function (session, results) {
-        session.dialogData.helpTopic = results.response;
-        if (results.response == "Company") {
-            session.beginDialog('askForCompanyName');
-        } else if (results.response == "FAQ") {
+        session.privateConversationData.helpTopic = results.response;
+        mongoUtil.insertMessageJson(results.response, chatuser, session);
+        if (results.response == "Stock Information") {
+            session.beginDialog('askForSecurityNameCodeId');
+        } else if (results.response == "FAQs") {
             session.beginDialog('openFAQPage');
-        } else if (results.response == "Other") {
-            session.beginDialog('other');
         } else {
-            session.beginDialog('askForSelect');
+            session.beginDialog('askForHelpTopic');
         }
     },
     function (session, results) {
-        session.dialogData.companyName = results.response;
+        session.privateConversationData.companyName = results.response;
+        mongoUtil.insertMessageJson(results.response, chatuser, session);
         session.beginDialog('showCompanyList');
     },
     function (session, results) {
-        session.dialogData.fullCompanyName = results.response;
+        session.privateConversationData.fullCompanyName = results.response;
+        mongoUtil.insertMessageJson(results.response, chatuser, session);
         session.beginDialog('askForQueryAboutCompany');
-        // Process request and display reservation details
-        // session.send(`Reservation confirmed. Reservation details: <br/>Date/Time: ${session.dialogData.reservationDate} <br/>Party size: ${session.dialogData.partySize} <br/>Reservation name: ${session.dialogData.reservationName}`);
-        // session.endDialog();
     },
     function (session, results) {
-        session.dialogData.userQuery = results.response;
+        session.privateConversationData.userQuery = results.response;
+        mongoUtil.insertMessageJson(results.response, chatuser, session);
+        var message = `You are querying about: ${session.privateConversationData.fullCompanyName} <br/>For : ${session.privateConversationData.userQuery}`;
+        session.send(message);
+        mongoUtil.insertMessageJson(message, chatbot, session);
+        setTimeout(() => {
+            session.beginDialog('askForAnythingElse');
+        }, 3000);
+    },
+    function (session, results) {
+        session.privateConversationData.userQuery = results.response;
+        mongoUtil.insertMessageJson(results.response, chatuser, session);
         // Process request
-         session.send(`You are querying about: ${session.dialogData.fullCompanyName} <br/>For : ${session.dialogData.userQuery}`);
-         session.endDialog();
+        if (results.response == "Yes") {
+            session.beginDialog('askForQueryAboutCompany');
+        } else if (results.response == "No") {
+            session.send("Ok, Have a nice Day.");
+            session.endDialog();
+            session.endConversation();
+        } else {
+            session.send("Bye, Have a nice Day.");
+            session.endDialog();
+            session.endConversation();
+            // session.beginDialog('askForHelpTopic');
+        }
     }
 ]).set('storage', inMemoryStorage) // Register in-memory storage 
 
-// ====DIALOGS==============================
-// ===========DIALOGS=======================
-// ===================DIALOGS===============
-// ===========================DIALOGS=======
+// ====DIALOGS====================================================================================
+// ===========DIALOGS=============================================================================
+// ===================DIALOGS=====================================================================
+// ===========================DIALOGS=============================================================
 
+
+bot.dialog('askForAnythingElse', [
+    function (session) {
+        var msg = new builder.Message(session);
+        var message = "Is there anything else you would like to know ?";
+        msg.attachmentLayout(builder.AttachmentLayout.carousel)
+        msg.attachments([
+            new builder.HeroCard(session)
+                .text(message)
+                .buttons([
+                    builder.CardAction.imBack(session, "Yes", "Yes"),
+                    builder.CardAction.imBack(session, "No", "No")
+                ])
+        ]);
+        mongoUtil.insertMessageJson(message, chatbot, session);
+        builder.Prompts.text(session, msg);
+    },
+    function (session, results) {
+        session.endDialogWithResult(results);
+    }
+])
 
 
 bot.dialog('askForHelpTopic', [
     function (session) {
         var msg = new builder.Message(session);
+        var message = "Please select from either of the below options to assist you further.";
         msg.attachmentLayout(builder.AttachmentLayout.carousel)
         msg.attachments([
             new builder.HeroCard(session)
-                .text("Hello, welcome to BSE. How may I assist you today?")
+                .text(message)
                 .buttons([
-                    builder.CardAction.imBack(session, "Company", "Company"),
-                    builder.CardAction.imBack(session, "FAQ", "FAQ"),
-                    builder.CardAction.imBack(session, "Other", "Other")
+                    builder.CardAction.imBack(session, "Stock Information", "Stock Information"),
+                    builder.CardAction.imBack(session, "FAQs", "FAQs")
                 ])
         ]);
+        mongoUtil.insertMessageJson(message, chatbot, session);
         builder.Prompts.text(session, msg);
     },
     function (session, results) {
         session.endDialogWithResult(results);
     }
-]);
+])
 
-// Dialog to ask for a date and time
-bot.dialog('askForSelect', [
+// // Dialog to ask for a date and time
+// bot.dialog('askForSelect', [
+//     function (session) {
+//         var msg = new builder.Message(session);
+//         msg.attachmentLayout(builder.AttachmentLayout.carousel)
+//         msg.attachments([
+//             new builder.HeroCard(session)
+//                 .text("Please select from either of the below options to assist you further.")
+//                 .buttons([
+//                     builder.CardAction.imBack(session, "Stock Information", "Stock Information"),
+//                     builder.CardAction.imBack(session, "FAQs", "FAQs")
+//                 ])
+//         ]);
+//         builder.Prompts.text(session, msg);
+//     },
+//     function (session, results) {
+//         session.dialogData.helpTopic = results.response;
+//         if (results.response == "Stock Information") {
+//             session.beginDialog('askForCompanyName');
+//         } else if (results.response == "FAQs") {
+//             session.beginDialog('openFAQPage');
+//         } else {
+//             session.beginDialog('askForSelect');
+//         }
+//     }
+// ]);
+
+
+
+// Dialog to askForSecurityNameCodeId
+bot.dialog('askForSecurityNameCodeId', [
     function (session) {
-        var msg = new builder.Message(session);
-        msg.attachmentLayout(builder.AttachmentLayout.carousel)
-        msg.attachments([
-            new builder.HeroCard(session)
-                .text("Please select from below list.")
-                .buttons([
-                    builder.CardAction.imBack(session, "Company", "Company"),
-                    builder.CardAction.imBack(session, "FAQ", "FAQ"),
-                    builder.CardAction.imBack(session, "Other", "Other")
-                ])
-        ]);
-        builder.Prompts.text(session, msg);
-    },
-    function (session, results) {
-        session.dialogData.helpTopic = results.response;
-        if (results.response.toLower() == "company") {
-            session.beginDialog('askForCompanyName');
-        } else if (results.response.toLower() == "faq") {
-            session.beginDialog('openFAQPage');
-        } else if (results.response.toLower() == "other") {
-            session.beginDialog('other');
-        } else {
-            session.beginDialog('askForSelect');
-        }
-    }
-]);
-
-
-
-// Dialog to ask for number of people in the party
-bot.dialog('askForCompanyName', [
-    function (session) {
-        builder.Prompts.text(session, "Please provide company name.");
-    },
-    function (session, results) {
-        session.endDialogWithResult(results);
-    }
-]);
-
-// Dialog to ask for number of people in the party
-bot.dialog('openFAQPage', [
-    function (session) {
-        session.send("Ok I am redirecting you to our FAQ page.");
-        session.endDialog();
-    }
-]);
-
-// Dialog to ask for number of people in the party
-bot.dialog('other', [
-    function (session) {
-        builder.Prompts.text(session, "Please provide your query.");
+        var message = "Please enter the Security Name / Code / ID you wish to know more about.";
+        mongoUtil.insertMessageJson(message, chatbot, session);
+        builder.Prompts.text(session, message);
     },
     function (session, results) {
         session.endDialogWithResult(results);
@@ -164,23 +217,24 @@ bot.dialog('other', [
 ]);
 
 
-// Dialog to ask for the reservation name.
+// Dialog to showCompanyList
 bot.dialog('showCompanyList', [
     function (session) {
-        var companies = bse.apiForGetCompanyByName(session.dialogData.companyName);
-        console.log(companies);
+        var companies = bse.apiForGetCompanyByName(session.privateConversationData.companyName);
         var companiesList = [];
-        for(var companyName in companies){
+        for (var companyName in companies) {
             var cardAction = builder.CardAction.imBack(session, companies[companyName], companies[companyName])
             companiesList.push(cardAction);
         }
         var msg = new builder.Message(session);
+        var message = `There are more than one stocks which start with ${session.privateConversationData.companyName}. Please select the one you wish to know more about.`;
         msg.attachmentLayout(builder.AttachmentLayout.carousel)
         msg.attachments([
             new builder.HeroCard(session)
-                .text("Please select from below list")
+                .text(message)
                 .buttons(companiesList)
         ]);
+        mongoUtil.insertMessageJson(message, chatbot, session);
         builder.Prompts.text(session, msg);
     },
     function (session, results) {
@@ -192,20 +246,62 @@ bot.dialog('showCompanyList', [
 // Dialog to askForQueryAboutCompany
 bot.dialog('askForQueryAboutCompany', [
     function (session) {
+        var queryTypes = bse.getQueryTypes();
+        var queriesList = [];
+        for (var queryName in queryTypes) {
+            var cardAction = builder.CardAction.imBack(session, queryTypes[queryName], queryTypes[queryName])
+            queriesList.push(cardAction);
+        }
         var msg = new builder.Message(session);
+        var message = "Please select from one of the below options for " + session.privateConversationData.fullCompanyName;
         msg.attachmentLayout(builder.AttachmentLayout.carousel)
         msg.attachments([
             new builder.HeroCard(session)
-                .text("What you want to query about " + session.dialogData.fullCompanyName)
-                .buttons([
-                    builder.CardAction.imBack(session, "GetQuote", "GetQuote"),
-                    builder.CardAction.imBack(session, "Results", "Results"),
-                    builder.CardAction.imBack(session, "News", "News")
-                ])
+                .text(message)
+                .buttons(queriesList)
         ]);
+        mongoUtil.insertMessageJson(message, chatbot, session);
         builder.Prompts.text(session, msg);
     },
     function (session, results) {
         session.endDialogWithResult(results);
     }
 ]);
+
+
+// Dialog to openFAQPage
+bot.dialog('openFAQPage', [
+    function (session) {
+        session.send("Ok I am redirecting you to our FAQ page.");
+        session.endDialog();
+    }
+]);
+
+// Dialog to other
+bot.dialog('other', [
+    function (session) {
+        builder.Prompts.text(session, "Please provide your query.");
+    },
+    function (session, results) {
+        session.endDialogWithResult(results);
+    }
+]);
+
+
+// ====Global Triggers====================================================================================
+// ===========Global Triggers=============================================================================
+// ===================Global Triggers=====================================================================
+// ===========================Global Triggers=============================================================
+
+// The dialog stack is cleared and this dialog is invoked when the user enters 'help'.
+bot.dialog('help', function (session, args, next) {
+    session.endDialog("I am a bot and believes in Go With The Flow, and expected the same from your side.");
+})
+    .triggerAction({
+        matches: /^help$/i,
+        onSelectAction: (session, args, next) => {
+            // Add the help dialog to the dialog stack 
+            // (override the default behavior of replacing the stack)
+            session.beginDialog(args.action, args);
+        }
+    });
