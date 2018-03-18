@@ -1,5 +1,8 @@
 
+var companyNames;
+
 module.exports = {
+   
 
     apiForGetCompanyByName: function (companyName) {
         var resultCompanies = [];
@@ -20,8 +23,19 @@ module.exports = {
         //     //     if (resultCompanies[t].toUpperCase().indexOf(companyName.toUpperCase()) > -1)
         //     //         companies.push(resultCompanies[t]);
         //     // }
-        return resultCompanies;
 
+        companyNames = resultCompanies;
+        if(companyName === "akshay"){
+            companyNames = null;
+        }
+        return companyNames;
+    },
+
+    getCompanyNames: function () {
+        if(companyNames)
+        return companyNames;
+        else
+        return null;
     },
 
     getQueryTypes: function () {

@@ -11,7 +11,7 @@ var mongoUtil = require('./mongoUtil.js');
 const chatbot = "bot";
 const chatuser = "user";
 
-mongoUtil.connectToMongo();
+//mongoUtil.connectToMongo();
 
 // Setup Restify Server
 var server = restify.createServer();
@@ -77,19 +77,11 @@ var bot = new builder.UniversalBot(connector, [
         session.beginDialog('askForHelpTopic');
     },
     function (session, results) {
-        session.privateConversationData.helpTopic = results.response;
-        mongoUtil.insertMessageJson(results.response, chatuser, session);
-        if (results.response == "Stock Information") {
-            session.beginDialog('askForSecurityNameCodeId');
-        } else if (results.response == "FAQs") {
-            session.beginDialog('openFAQPage');
-        } else {
-            session.beginDialog('askForHelpTopic');
-        }
-    },
-    function (session, results) {
         session.privateConversationData.companyName = results.response;
         mongoUtil.insertMessageJson(results.response, chatuser, session);
+        session.beginDialog('getCompanies');
+    },
+    function (session) {
         session.beginDialog('showCompanyList');
     },
     function (session, results) {
@@ -131,6 +123,7 @@ var bot = new builder.UniversalBot(connector, [
 // ===================DIALOGS=====================================================================
 // ===========================DIALOGS=============================================================
 
+//bot.dialog.onDefault(builder.DialogAction.send("I'm sorry I didn't understand.  I can only retrieve customer data for you."))
 
 bot.dialog('askForAnythingElse', [
     function (session) {
@@ -171,36 +164,21 @@ bot.dialog('askForHelpTopic', [
         builder.Prompts.text(session, msg);
     },
     function (session, results) {
-        session.endDialogWithResult(results);
+        session.privateConversationData.helpTopic = results.response;
+        mongoUtil.insertMessageJson(results.response, chatuser, session);
+        if (results.response == "Stock Information") {
+            session.beginDialog('askForSecurityNameCodeId');
+        } else if (results.response == "FAQs") {
+            session.beginDialog('openFAQPage');
+        } else {
+            session.replaceDialog("askForHelpTopic");
+            // session.beginDialog('askForHelpTopic');
+        }
     }
-])
-
-// // Dialog to ask for a date and time
-// bot.dialog('askForSelect', [
-//     function (session) {
-//         var msg = new builder.Message(session);
-//         msg.attachmentLayout(builder.AttachmentLayout.carousel)
-//         msg.attachments([
-//             new builder.HeroCard(session)
-//                 .text("Please select from either of the below options to assist you further.")
-//                 .buttons([
-//                     builder.CardAction.imBack(session, "Stock Information", "Stock Information"),
-//                     builder.CardAction.imBack(session, "FAQs", "FAQs")
-//                 ])
-//         ]);
-//         builder.Prompts.text(session, msg);
-//     },
-//     function (session, results) {
-//         session.dialogData.helpTopic = results.response;
-//         if (results.response == "Stock Information") {
-//             session.beginDialog('askForCompanyName');
-//         } else if (results.response == "FAQs") {
-//             session.beginDialog('openFAQPage');
-//         } else {
-//             session.beginDialog('askForSelect');
-//         }
-//     }
-// ]);
+    // function (session, results) {
+    //     session.endDialogWithResult(results);
+    // }
+]);
 
 
 
@@ -216,11 +194,46 @@ bot.dialog('askForSecurityNameCodeId', [
     }
 ]);
 
+// Dialog to getCompanies
+bot.dialog('getCompanies', [
+    function (session, args) {
+        var companies;
+        if (args && args.apiCall) {
+            console.log("BSE API ALREADY CALLED, NOT CALLING AGAIN");
+        } else {
+            companies = bse.apiForGetCompanyByName(session.privateConversationData.companyName);
+        }
+        console.log("Companies : ", companies);
+        if (companies) {
+            session.endDialog();
+            //session.beginDialog('showCompanyList');
+        } else {
+            console.log("Companies not found.");
+            var message = "Requested id not found, Please enter a valid Security Name / Code / ID.";
+            mongoUtil.insertMessageJson(message, chatbot, session);
+            builder.Prompts.text(session, message);
+            // session.replaceDialog("getCompanies");
+        }
+    },
+    function (session, results) {
+        var args = {};
+        args.apiCall = false;
+        var companies = bse.apiForGetCompanyByName(results.response);
+        if (companies) {
+            session.privateConversationData.companyName = results.response;
+            session.endDialog();
+            //session.beginDialog('showCompanyList');
+        } else {
+            args.apiCall = true;
+            session.replaceDialog("getCompanies", args);
+        }
+    }
+]);
 
 // Dialog to showCompanyList
 bot.dialog('showCompanyList', [
     function (session) {
-        var companies = bse.apiForGetCompanyByName(session.privateConversationData.companyName);
+        var companies = bse.getCompanyNames();
         var companiesList = [];
         for (var companyName in companies) {
             var cardAction = builder.CardAction.imBack(session, companies[companyName], companies[companyName])
@@ -238,7 +251,19 @@ bot.dialog('showCompanyList', [
         builder.Prompts.text(session, msg);
     },
     function (session, results) {
-        session.endDialogWithResult(results);
+        var isFound = false;
+        var companies = bse.getCompanyNames();
+        if (companies) {
+            for (var companyName in companies) {
+                if (companies[companyName] === results.response) {
+                    isFound = true;
+                    session.endDialogWithResult(results);
+                }
+            }
+            if (!isFound) {
+                session.replaceDialog("showCompanyList");
+            }
+        }
     }
 ]);
 
@@ -264,7 +289,17 @@ bot.dialog('askForQueryAboutCompany', [
         builder.Prompts.text(session, msg);
     },
     function (session, results) {
-        session.endDialogWithResult(results);
+        var isFound = false;
+        var queryTypes = bse.getQueryTypes();
+        for (var queryName in queryTypes) {
+            if (queryTypes[queryName] === results.response) {
+                isFound = true;
+                session.endDialogWithResult(results);
+            }
+        }
+        if (!isFound) {
+            session.replaceDialog("askForQueryAboutCompany");
+        }
     }
 ]);
 
