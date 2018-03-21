@@ -1,41 +1,58 @@
 
 var companyNames;
+var mongoUtil = require('./mongoUtil.js');
 
 module.exports = {
-   
 
-    apiForGetCompanyByName: function (companyName) {
-        var resultCompanies = [];
-        resultCompanies.push("Hdfc Life");
-        resultCompanies.push("Hdfc Ergo");
-        resultCompanies.push("Hdfc Alpha");
-        resultCompanies.push("Hdfc Beta");
-        resultCompanies.push("Hdfc Gaama");
-
-        //     // resultCompanies.push("Tata Whiskey");
-        //     // resultCompanies.push("Tata Seirra");
-        //     // resultCompanies.push("Tata Rum");
-        //     // resultCompanies.push("Tata Beer");
-
-        //     // var companies = [];
-
-        //     // for (var t in resultCompanies) {
-        //     //     if (resultCompanies[t].toUpperCase().indexOf(companyName.toUpperCase()) > -1)
-        //     //         companies.push(resultCompanies[t]);
-        //     // }
-
-        companyNames = resultCompanies;
-        if(companyName === "akshay"){
-            companyNames = null;
+    apiForGetCompanyByName: function (reqStr, onDone) {
+        var companiesList = [];
+        //var isFound = false;
+        var userStringArray = reqStr.split(' ');
+        console.log("userStringArray : ", userStringArray);
+        var scripsIDsArray = mongoUtil.scripIDsDB();
+        var scripsCodesArray = mongoUtil.scripCodesDB();
+        var scripsNamesArray = mongoUtil.scripNamesDB();
+        //console.log("scripsNamesArray : " + scripsNamesArray);
+        for (var i in userStringArray) {
+            var singleStr = userStringArray[i];
+            console.log("SINGLE STRING : " + singleStr);
+            if (!isNaN(singleStr)) {
+                console.log("NUMBER FOUND IN STRING : " + singleStr);
+                var companyCode = searchLocalDB(singleStr, scripsCodesArray);
+                if (companyCode) {
+                    console.log("SECURITY CODE FOUND IN DB : " + companyCode);
+                    companiesList.push(companyCode);
+                }
+            }else{
+                var companyID = searchLocalDB(singleStr, scripsIDsArray);
+                if (companyID) {
+                    console.log("SECURITY ID FOUND IN DB : " + companyID);
+                    companiesList.push(companyID);
+                }
+                var companyName = searchLocalDB(singleStr, scripsNamesArray);
+                if (companyName) {
+                    console.log("SECURITY NAME FOUND IN DB : " + companyName);
+                    companiesList.push(companyName);
+                }
+            }
         }
-        return companyNames;
+        // console.log("QUERY FOUND IN USER MESSAGE : " + companiesList);
+        if(companiesList.length > 0){
+            mongoUtil.getScrips(companiesList, function (result) {
+                companyNames = result;
+                if (onDone)
+                    onDone(result);
+            });
+        }else{
+            onDone(companiesList);
+        }
     },
 
     getCompanyNames: function () {
-        if(companyNames)
-        return companyNames;
+        if (companyNames)
+            return companyNames;
         else
-        return null;
+            return null;
     },
 
     getQueryTypes: function () {
@@ -54,4 +71,26 @@ module.exports = {
         return a + b;
     }
 }
+
+function searchLocalDB(valueToSearch, arrayFromSearch) {
+    var result;
+    for (var j in arrayFromSearch) {
+        var valueInArray = arrayFromSearch[j];
+        if (isNaN(valueToSearch)) {
+            valueToSearch = valueToSearch.toLowerCase();
+            valueInArray = valueInArray.toLowerCase()
+        } else {
+            valueToSearch = parseInt(valueToSearch);
+        }
+        var regEx = new RegExp("^" +valueToSearch);
+        if (regEx.test(valueInArray)) {
+            console.log("Search : " + valueToSearch);
+            console.log("DB : " + valueInArray);
+            result = arrayFromSearch[j];
+            break;
+        }
+    }
+    return result;
+}
+
 

@@ -11,7 +11,13 @@ var mongoUtil = require('./mongoUtil.js');
 const chatbot = "bot";
 const chatuser = "user";
 
-//mongoUtil.connectToMongo();
+// var cuid = require('cuid')();
+// console.log( "Unique Id : "+cuid );
+
+mongoUtil.connectToMongo(function () {
+    console.log("Storing ScripNames Locally.");
+    mongoUtil.getScripsData(); // Storing ScripNames Locally.
+});
 
 // Setup Restify Server
 var server = restify.createServer();
@@ -21,8 +27,8 @@ server.listen(process.env.port || process.env.PORT || 3978, function () {
 
 // Create chat connector for communicating with the Bot Framework Service
 var connector = new builder.ChatConnector({
-    appId: '33774495-08e0-4665-bcd2-ba2657c579c7',
-    appPassword: 'g94oUQWiu6(?Y&Cl',
+    appId: 'b22d09e8-8cf0-4863-80a5-08c9d1fc7743',
+    appPassword: 'OjV0.3Y#PSwbpqsw',
     openIdMetadata: process.env.BotOpenIdMetadata
 });
 
@@ -90,31 +96,9 @@ var bot = new builder.UniversalBot(connector, [
         session.beginDialog('askForQueryAboutCompany');
     },
     function (session, results) {
-        session.privateConversationData.userQuery = results.response;
-        mongoUtil.insertMessageJson(results.response, chatuser, session);
-        var message = `You are querying about: ${session.privateConversationData.fullCompanyName} <br/>For : ${session.privateConversationData.userQuery}`;
-        session.send(message);
-        mongoUtil.insertMessageJson(message, chatbot, session);
-        setTimeout(() => {
-            session.beginDialog('askForAnythingElse');
-        }, 3000);
-    },
-    function (session, results) {
-        session.privateConversationData.userQuery = results.response;
-        mongoUtil.insertMessageJson(results.response, chatuser, session);
-        // Process request
-        if (results.response == "Yes") {
-            session.beginDialog('askForQueryAboutCompany');
-        } else if (results.response == "No") {
-            session.send("Ok, Have a nice Day.");
-            session.endDialog();
-            session.endConversation();
-        } else {
-            session.send("Bye, Have a nice Day.");
-            session.endDialog();
-            session.endConversation();
-            // session.beginDialog('askForHelpTopic');
-        }
+        session.send("Bye, Have a nice Day.");
+        session.endDialog();
+        session.endConversation();
     }
 ]).set('storage', inMemoryStorage) // Register in-memory storage 
 
@@ -124,28 +108,6 @@ var bot = new builder.UniversalBot(connector, [
 // ===========================DIALOGS=============================================================
 
 //bot.dialog.onDefault(builder.DialogAction.send("I'm sorry I didn't understand.  I can only retrieve customer data for you."))
-
-bot.dialog('askForAnythingElse', [
-    function (session) {
-        var msg = new builder.Message(session);
-        var message = "Is there anything else you would like to know ?";
-        msg.attachmentLayout(builder.AttachmentLayout.carousel)
-        msg.attachments([
-            new builder.HeroCard(session)
-                .text(message)
-                .buttons([
-                    builder.CardAction.imBack(session, "Yes", "Yes"),
-                    builder.CardAction.imBack(session, "No", "No")
-                ])
-        ]);
-        mongoUtil.insertMessageJson(message, chatbot, session);
-        builder.Prompts.text(session, msg);
-    },
-    function (session, results) {
-        session.endDialogWithResult(results);
-    }
-])
-
 
 bot.dialog('askForHelpTopic', [
     function (session) {
@@ -200,33 +162,40 @@ bot.dialog('getCompanies', [
         var companies;
         if (args && args.apiCall) {
             console.log("BSE API ALREADY CALLED, NOT CALLING AGAIN");
-        } else {
-            companies = bse.apiForGetCompanyByName(session.privateConversationData.companyName);
-        }
-        console.log("Companies : ", companies);
-        if (companies) {
-            session.endDialog();
-            //session.beginDialog('showCompanyList');
-        } else {
             console.log("Companies not found.");
             var message = "Requested id not found, Please enter a valid Security Name / Code / ID.";
             mongoUtil.insertMessageJson(message, chatbot, session);
             builder.Prompts.text(session, message);
-            // session.replaceDialog("getCompanies");
+        } else {
+            bse.apiForGetCompanyByName(session.privateConversationData.companyName, function (result) {
+                companies = result;
+                console.log("Companies : ", companies);
+                if (companies && companies.length > 0) {
+                    session.endDialog();
+                } else {
+                    console.log("Companies not found.");
+                    var message = "Requested id not found, Please enter a valid Security Name / Code / ID.";
+                    mongoUtil.insertMessageJson(message, chatbot, session);
+                    builder.Prompts.text(session, message);
+                }
+            });
         }
     },
     function (session, results) {
         var args = {};
         args.apiCall = false;
-        var companies = bse.apiForGetCompanyByName(results.response);
-        if (companies) {
-            session.privateConversationData.companyName = results.response;
-            session.endDialog();
-            //session.beginDialog('showCompanyList');
-        } else {
-            args.apiCall = true;
-            session.replaceDialog("getCompanies", args);
-        }
+        var companies;
+        bse.apiForGetCompanyByName(results.response, function (result) {
+            companies = result;
+            if (companies && companies.length > 0) {
+                session.privateConversationData.companyName = results.response;
+                session.endDialog();
+                //session.beginDialog('showCompanyList');
+            } else {
+                args.apiCall = true;
+                session.replaceDialog("getCompanies", args);
+            }
+        });
     }
 ]);
 
@@ -294,11 +263,47 @@ bot.dialog('askForQueryAboutCompany', [
         for (var queryName in queryTypes) {
             if (queryTypes[queryName] === results.response) {
                 isFound = true;
-                session.endDialogWithResult(results);
+                session.privateConversationData.userQuery = results.response;
+                mongoUtil.insertMessageJson(results.response, chatuser, session);
+                var message = `You are querying about: ${session.privateConversationData.fullCompanyName} <br/>For : ${session.privateConversationData.userQuery}`;
+                session.send(message);
+                mongoUtil.insertMessageJson(message, chatbot, session);
+                setTimeout(() => {
+                    session.beginDialog('askForAnythingElse');
+                }, 2000);
             }
         }
         if (!isFound) {
             session.replaceDialog("askForQueryAboutCompany");
+        }
+    }
+]);
+
+
+bot.dialog('askForAnythingElse', [
+    function (session) {
+        var msg = new builder.Message(session);
+        var message = "Is there anything else you would like to know ?";
+        msg.attachmentLayout(builder.AttachmentLayout.carousel)
+        msg.attachments([
+            new builder.HeroCard(session)
+                .text(message)
+                .buttons([
+                    builder.CardAction.imBack(session, "Yes", "Yes"),
+                    builder.CardAction.imBack(session, "No", "No")
+                ])
+        ]);
+        mongoUtil.insertMessageJson(message, chatbot, session);
+        builder.Prompts.text(session, msg);
+    },
+    function (session, results) {
+        mongoUtil.insertMessageJson(results.response, chatuser, session);
+        // Process request
+        if (results.response == "Yes") {
+            session.replaceDialog('askForQueryAboutCompany');
+        }
+        else {
+            session.endDialogWithResult(results);
         }
     }
 ]);
