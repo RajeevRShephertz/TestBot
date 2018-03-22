@@ -1,2 +1,2 @@
-# BSEBot
+# TestBot
 TestBot
